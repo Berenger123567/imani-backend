@@ -46,16 +46,15 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const { Resend } = await import('resend')
-    const resend = new Resend(process.env.RESEND_API_KEY)
-    const { data, error } = await resend.emails.send({
-      from: 'Imani Travel <onboarding@resend.dev>',
+    const sgMail = (await import('@sendgrid/mail')).default
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+    await sgMail.send({
       to: process.env.EMAIL_USER,
+      from: { email: 'imanignammankou@gmail.com', name: 'Imani Travel' },
       subject: 'Test Imani Travel',
       text: 'Email config OK',
     })
-    if (error) throw error
-    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.RESEND_API_KEY })
+    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.SENDGRID_API_KEY })
   } catch (err) {
     res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
   }

@@ -1,20 +1,20 @@
-import { Resend } from 'resend'
+import sgMail from '@sendgrid/mail'
 
-const FROM_EMAIL = 'onboarding@resend.dev'
+const FROM_EMAIL = 'imanignammankou@gmail.com'
 const FROM_NAME = 'Imani Travel'
 
-function getResend() {
-  if (!process.env.RESEND_API_KEY) {
-    throw new Error('RESEND_API_KEY is missing')
+function initSendGrid() {
+  if (!process.env.SENDGRID_API_KEY) {
+    throw new Error('SENDGRID_API_KEY is missing')
   }
-  return new Resend(process.env.RESEND_API_KEY)
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 }
 
 export async function sendNewOrderNotification(order) {
-  console.log('Sending new order notification via Resend...')
+  console.log('Sending new order notification via SendGrid...')
 
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
@@ -167,29 +167,26 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    const { data, error } = await getResend().emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+    initSendGrid()
+
+    await sgMail.send({
       to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Nouvelle demande de voyage - ${order.name}`,
       html: htmlContent,
     })
 
-    if (error) {
-      console.error('Resend API error:', error)
-      throw error
-    }
-
-    console.log(`Email notification sent for order ${order._id}`, data)
+    console.log(`Email notification sent for order ${order._id}`)
   } catch (err) {
     console.error('Failed to send email notification:', err.message)
   }
 }
 
 export async function sendReplyToClient(order, replyMessage, pdfPath) {
-  console.log('Sending reply email via Resend...')
+  console.log('Sending reply email via SendGrid...')
 
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
@@ -280,19 +277,16 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    const { data, error } = await getResend().emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
+    initSendGrid()
+
+    await sgMail.send({
       to: order.email,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Votre projet de voyage Imani - ${order.name}`,
       html: htmlContent,
     })
 
-    if (error) {
-      console.error('Resend API error:', error)
-      throw error
-    }
-
-    console.log(`Reply email sent to ${order.email} for order ${order._id}`, data)
+    console.log(`Reply email sent to ${order.email} for order ${order._id}`)
   } catch (err) {
     console.error('Failed to send reply email:', err.message)
   }
