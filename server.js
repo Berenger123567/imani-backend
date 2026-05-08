@@ -46,23 +46,16 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const { default: nodemailer } = await import('nodemailer')
-
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 587,
-      secure: false,
-      requireTLS: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
+    const { Resend } = await import('resend')
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    const { data, error } = await resend.emails.send({
+      from: 'Imani Travel <onboarding@resend.dev>',
+      to: process.env.EMAIL_USER,
+      subject: 'Test Imani Travel',
+      text: 'Email config OK',
     })
-
-    await transporter.verify()
-    res.json({ status: 'ok', email: 'connected', user: process.env.EMAIL_USER })
+    if (error) throw error
+    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.RESEND_API_KEY })
   } catch (err) {
     res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
   }

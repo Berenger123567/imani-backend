@@ -1,67 +1,23 @@
-import dns from 'dns'
-import net from 'net'
+import { Resend } from 'resend'
 
-const getTransporterConfig = () => ({
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  requireTLS: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  connectionTimeout: 30000,
-  greetingTimeout: 30000,
-  socketTimeout: 30000,
-  tls: {
-    rejectUnauthorized: true,
-    minVersion: 'TLSv1.2'
-  },
-  lookup: (hostname, cb) => {
-    dns.resolve4(hostname, (err, addresses) => {
-      if (err) return cb(err)
-      cb(null, addresses[0], 4)
-    })
-  }
-})
+const resend = new Resend(process.env.RESEND_API_KEY)
 
-// Fonction utilitaire pour créer le transporteur avec vérification
-async function createTransporter() {
-  const nodemailerModule = await import('nodemailer')
-  const nodemailer = nodemailerModule.default
-  
-  const transporter = nodemailer.createTransport(getTransporterConfig())
-  
-  try {
-    await transporter.verify()
-    console.log('✅ SMTP connection verified')
-    return { transporter, nodemailer }
-  } catch (err) {
-    console.error('❌ SMTP verification failed:', err.message)
-    throw err
-  }
-}
+const FROM_EMAIL = 'onboarding@resend.dev'
+const FROM_NAME = 'Imani Travel'
 
 export async function sendNewOrderNotification(order) {
-  console.log('📧 Attempting to send email notification...')
-  console.log('EMAIL_USER:', process.env.EMAIL_USER)
-  console.log('EMAIL_PASS exists:', !!process.env.EMAIL_PASS)
-  console.log('EMAIL_TO:', process.env.EMAIL_TO)
-  
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️ Email credentials not configured, skipping notification')
+  console.log('Sending new order notification via Resend...')
+
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY not configured, skipping email')
     return
   }
 
   try {
-    console.log('📦 Loading nodemailer and creating transporter...')
-    const { transporter, nodemailer } = await createTransporter()
-
     const adminUrl = process.env.CLIENT_URL
       ? `${process.env.CLIENT_URL}/admin/orders/${order._id}`
       : `http://localhost:5173/admin/orders/${order._id}`
 
-    // Nettoyer le message HTML pour éviter les problèmes d'encodage
     const htmlContent = `
       <!DOCTYPE html>
       <html>
@@ -100,17 +56,15 @@ export async function sendNewOrderNotification(order) {
       <body>
         <div class="container">
           <div class="header">
-            <h1>🌍 Nouvelle demande</h1>
+            <h1>Nouvelle demande</h1>
             <p>Un voyageur attend sa réponse !</p>
           </div>
-          
           <div class="content">
             <div style="text-align: center;">
-              <span class="badge">🆕 NOUVEAU</span>
+              <span class="badge">NOUVEAU</span>
             </div>
-
             <div class="section">
-              <div class="section-title">👤 Informations client</div>
+              <div class="section-title">Informations client</div>
               <div class="info-grid">
                 <div class="info-item">
                   <div class="info-label">Nom</div>
@@ -128,9 +82,8 @@ export async function sendNewOrderNotification(order) {
                 ` : ''}
               </div>
             </div>
-
             <div class="section">
-              <div class="section-title">✈️ Détails du voyage</div>
+              <div class="section-title">Détails du voyage</div>
               <div class="info-grid">
                 <div class="info-item">
                   <div class="info-label">Destination</div>
@@ -164,51 +117,43 @@ export async function sendNewOrderNotification(order) {
                 ` : ''}
               </div>
             </div>
-
             ${order.activities && order.activities.length > 0 ? `
             <div class="section">
-              <div class="section-title">🎯 Activités recherchées</div>
+              <div class="section-title">Activités recherchées</div>
               <div class="activities">
                 ${order.activities.map(activity => `<span class="activity-tag">${escapeHtml(activity)}</span>`).join('')}
               </div>
             </div>
             ` : ''}
-
             ${order.travel_style ? `
             <div class="section">
-              <div class="section-title">✨ Style de voyage</div>
+              <div class="section-title">Style de voyage</div>
               <p style="color: #555; line-height: 1.6;">${escapeHtml(order.travel_style)}</p>
             </div>
             ` : ''}
-
             ${order.feelings ? `
             <div class="section">
-              <div class="section-title">💫 Envies</div>
+              <div class="section-title">Envies</div>
               <p style="color: #555; line-height: 1.6;">${escapeHtml(order.feelings)}</p>
             </div>
             ` : ''}
-
             ${order.message ? `
             <div class="message-box">
-              <div class="section-title">💬 Message du client</div>
+              <div class="section-title">Message du client</div>
               <p style="color: #555; line-height: 1.6; font-style: italic;">"${escapeHtml(order.message)}"</p>
             </div>
             ` : ''}
-
             <div class="cta-section">
-              <a href="${adminUrl}" class="cta-button">
-                📋 Voir le détail de la commande
-              </a>
+              <a href="${adminUrl}" class="cta-button">Voir le détail de la commande</a>
               <p style="margin-top: 15px; color: #999; font-size: 13px;">
                 Reçu le ${new Date(order.createdAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>
-
           <div class="footer">
             <p><strong>Imani Travel Planner</strong> - L'apogée du voyage sur mesure</p>
             <p style="margin-top: 5px;">
-              <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}">Accéder au site</a> · 
+              <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}">Accéder au site</a> ·
               <a href="${process.env.CLIENT_URL || 'http://localhost:5173'}/admin/orders">Toutes les commandes</a>
             </p>
           </div>
@@ -217,34 +162,33 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    const mailOptions = {
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: process.env.EMAIL_TO || process.env.EMAIL_USER,
-      subject: `✨ Nouvelle demande de voyage - ${order.name}`,
+      subject: `Nouvelle demande de voyage - ${order.name}`,
       html: htmlContent,
-      text: `Nouvelle demande de voyage de ${order.name}\nDestination: ${order.destination}\nEmail: ${order.email}` // Fallback texte
+    })
+
+    if (error) {
+      console.error('Resend API error:', error)
+      throw error
     }
 
-    await transporter.sendMail(mailOptions)
-    console.log(`✅ Email notification sent for order ${order._id}`)
+    console.log(`Email notification sent for order ${order._id}`, data)
   } catch (err) {
-    console.error('❌ Failed to send email notification:', err.message)
-    console.error('Stack trace:', err.stack)
-    throw err // Propager l'erreur pour gestion par l'appelant
+    console.error('Failed to send email notification:', err.message)
   }
 }
 
 export async function sendReplyToClient(order, replyMessage, pdfPath) {
-  console.log('📧 Attempting to send reply email to client...')
+  console.log('Sending reply email via Resend...')
 
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('⚠️ Email credentials not configured, skipping reply email')
+  if (!process.env.RESEND_API_KEY) {
+    console.warn('RESEND_API_KEY not configured, skipping email')
     return
   }
 
   try {
-    const { transporter, nodemailer } = await createTransporter()
-
     const apiUrl = process.env.API_URL || 'http://localhost:3001'
     const pdfDownloadUrl = pdfPath ? `${apiUrl}${pdfPath}` : null
 
@@ -284,49 +228,42 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       <body>
         <div class="container">
           <div class="header">
-            <h1>✈️ Votre voyage sur mesure</h1>
+            <h1>Votre voyage sur mesure</h1>
             <p>${escapeHtml(order.name)}, nous avons une réponse pour vous !</p>
           </div>
-
           <div class="content">
             <p class="greeting">Bonjour <strong>${escapeHtml(order.name)}</strong>,</p>
             <p style="color: #555; line-height: 1.6;">
               ${replyMessage ? `Notre équipe Imani Travel vous a répondu :` : `Notre équipe Imani Travel a préparé votre carnet de voyage personnalisé.`}
             </p>
-
             ${replyMessage ? `
             <div class="message-box">
-              <div class="section-title" style="font-size: 12px; text-transform: uppercase; color: #999; letter-spacing: 1px; margin-bottom: 10px; font-weight: 600;">📨 Message de votre conseiller</div>
+              <div class="section-title" style="font-size: 12px; text-transform: uppercase; color: #999; letter-spacing: 1px; margin-bottom: 10px; font-weight: 600;">Message de votre conseiller</div>
               <p>${escapeHtml(replyMessage)}</p>
             </div>
             ` : ''}
-
             ${pdfDownloadUrl ? `
             <div class="pdf-section">
-              <span class="pdf-icon">📄</span>
+              <span class="pdf-icon">PDF</span>
               <h3 style="color: #333; margin-bottom: 8px; font-size: 16px;">Votre carnet de voyage</h3>
               <p style="color: #666; margin-bottom: 15px; font-size: 14px;">Téléchargez votre carnet de voyage personnalisé ci-dessous :</p>
-              <a href="${pdfDownloadUrl}">📥 Télécharger le PDF</a>
+              <a href="${pdfDownloadUrl}">Télécharger le PDF</a>
             </div>
             ` : ''}
-
             <div class="divider"></div>
-
             <div class="recap">
-              <h3>📋 Récapitulatif de votre demande</h3>
+              <h3>Récapitulatif de votre demande</h3>
               <p><strong>Destination :</strong> ${escapeHtml(order.destination)}</p>
               <p><strong>Budget :</strong> ${escapeHtml(order.budget || 'Non spécifié')}</p>
               <p><strong>Durée :</strong> ${escapeHtml(order.duration || 'Non spécifiée')}</p>
               ${order.date ? `<p><strong>Période :</strong> ${new Date(order.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>` : ''}
             </div>
-
             <div style="text-align: center; margin-top: 25px;">
               <p style="color: #999; font-size: 13px;">
                 Une question ? Répondez directement à cet email ou contactez-nous sur notre site.
               </p>
             </div>
           </div>
-
           <div class="footer">
             <p><strong>Imani Travel Planner</strong> - L'apogée du voyage sur mesure</p>
             <p style="margin-top: 5px;">
@@ -338,24 +275,24 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    const mailOptions = {
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+    const { data, error } = await resend.emails.send({
+      from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: order.email,
-      subject: `✈️ Votre projet de voyage Imani - ${order.name}`,
+      subject: `Votre projet de voyage Imani - ${order.name}`,
       html: htmlContent,
-      text: `Bonjour ${order.name},\n\n${replyMessage || 'Votre carnet de voyage est prêt.'}\n\nTéléchargez-le ici: ${pdfDownloadUrl || 'Consultez votre espace client.'}`
+    })
+
+    if (error) {
+      console.error('Resend API error:', error)
+      throw error
     }
 
-    await transporter.sendMail(mailOptions)
-    console.log(`✅ Reply email sent to ${order.email} for order ${order._id}`)
+    console.log(`Reply email sent to ${order.email} for order ${order._id}`, data)
   } catch (err) {
-    console.error('❌ Failed to send reply email:', err.message)
-    console.error('Stack trace:', err.stack)
-    throw err
+    console.error('Failed to send reply email:', err.message)
   }
 }
 
-// Fonction utilitaire pour échapper les caractères HTML
 function escapeHtml(str) {
   if (!str) return ''
   return String(str)
