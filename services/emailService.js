@@ -1,3 +1,6 @@
+import dns from 'dns'
+dns.setDefaultResultOrder('ipv4first')
+
 export async function sendNewOrderNotification(order) {
   console.log('📧 Attempting to send email notification...')
   console.log('EMAIL_USER:', process.env.EMAIL_USER)
@@ -21,6 +24,8 @@ export async function sendNewOrderNotification(order) {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
     })
 
     console.log('🔄 Verifying SMTP connection...')
@@ -217,6 +222,8 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
     })
 
     await transporter.verify()
