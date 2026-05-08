@@ -1,5 +1,56 @@
 import dns from 'dns'
+
+// Force l'utilisation de l'IPv4 pour toutes les résolutions DNS
 dns.setDefaultResultOrder('ipv4first')
+
+// Configuration SMTP commune avec options de connexion améliorées
+const getTransporterConfig = () => ({
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  requireTLS: true,
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 15000,
+  // Force la résolution IPv4 au niveau de la connexion
+  tls: {
+    rejectUnauthorized: true,
+    minVersion: 'TLSv1.2'
+  },
+  // Configuration supplémentaire pour forcer IPv4
+  localAddress: undefined, // Laisse Node.js gérer mais avec IPv4 préféré
+  // Méthode de résolution DNS personnalisée pour garantir l'IPv4
+  lookup: (hostname, cb) => {
+    dns.lookup(hostname, { family: 4 }, cb)
+  }
+})
+
+// Fonction utilitaire pour créer le transporteur avec vérification
+async function createTransporter() {
+  const nodemailerModule = await import('nodemailer')
+  const nodemailer = nodemailerModule.default
+  
+  const transporter = nodemailer.createTransport(getTransporterConfig())
+  
+  // Vérifier la connexion avec un timeout plus long
+  try {
+    await Promise.race([
+      transporter.verify(),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('SMTP verification timeout after 15s')), 15000)
+      )
+    ])
+    console.log('✅ SMTP connection verified successfully using IPv4')
+    return { transporter, nodemailer }
+  } catch (err) {
+    console.error('❌ SMTP verification failed:', err.message)
+    throw err
+  }
+}
 
 export async function sendNewOrderNotification(order) {
   console.log('📧 Attempting to send email notification...')
@@ -13,35 +64,15 @@ export async function sendNewOrderNotification(order) {
   }
 
   try {
-    console.log('📦 Loading nodemailer...')
-    const nodemailerModule = await import('nodemailer')
-    const nodemailer = nodemailerModule.default
-    console.log('✅ Nodemailer loaded')
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    })
-
-    console.log('🔄 Verifying SMTP connection...')
-    await transporter.verify()
-    console.log('✅ SMTP connection verified')
+    console.log('📦 Loading nodemailer and creating transporter...')
+    const { transporter, nodemailer } = await createTransporter()
 
     const adminUrl = process.env.CLIENT_URL
       ? `${process.env.CLIENT_URL}/admin/orders/${order._id}`
       : `http://localhost:5173/admin/orders/${order._id}`
 
-    const mailOptions = {
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
-      subject: `✨ Nouvelle demande de voyage - ${order.name}`,
-      contentType: 'text/html; charset=UTF-8',
-      html: `
+    // Nettoyer le message HTML pour éviter les problèmes d'encodage
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -93,7 +124,7 @@ export async function sendNewOrderNotification(order) {
               <div class="info-grid">
                 <div class="info-item">
                   <div class="info-label">Nom</div>
-                  <div class="info-value">${order.name}</div>
+                  <div class="info-value">${escapeHtml(order.name)}</div>
                 </div>
                 <div class="info-item">
                   <div class="info-label">Email</div>
@@ -102,7 +133,7 @@ export async function sendNewOrderNotification(order) {
                 ${order.phone ? `
                 <div class="info-item">
                   <div class="info-label">Téléphone</div>
-                  <div class="info-value"><a href="tel:${order.phone}" style="color: #e84393;">${order.phone}</a></div>
+                  <div class="info-value"><a href="tel:${order.phone}" style="color: #e84393;">${escapeHtml(order.phone)}</a></div>
                 </div>
                 ` : ''}
               </div>
@@ -113,32 +144,32 @@ export async function sendNewOrderNotification(order) {
               <div class="info-grid">
                 <div class="info-item">
                   <div class="info-label">Destination</div>
-                  <div class="info-value">${order.destination}</div>
+                  <div class="info-value">${escapeHtml(order.destination)}</div>
                 </div>
                 <div class="info-item">
                   <div class="info-label">Budget</div>
-                  <div class="info-value">${order.budget}</div>
+                  <div class="info-value">${escapeHtml(order.budget || 'Non spécifié')}</div>
                 </div>
                 <div class="info-item">
                   <div class="info-label">Durée</div>
-                  <div class="info-value">${order.duration}</div>
+                  <div class="info-value">${escapeHtml(order.duration || 'Non spécifiée')}</div>
                 </div>
                 ${order.composition ? `
                 <div class="info-item">
                   <div class="info-label">Composition</div>
-                  <div class="info-value">${order.composition}</div>
+                  <div class="info-value">${escapeHtml(order.composition)}</div>
                 </div>
                 ` : ''}
                 ${order.climate ? `
                 <div class="info-item">
                   <div class="info-label">Climat souhaité</div>
-                  <div class="info-value">${order.climate}</div>
+                  <div class="info-value">${escapeHtml(order.climate)}</div>
                 </div>
                 ` : ''}
                 ${order.accommodation ? `
                 <div class="info-item">
                   <div class="info-label">Hébergement</div>
-                  <div class="info-value">${order.accommodation}</div>
+                  <div class="info-value">${escapeHtml(order.accommodation)}</div>
                 </div>
                 ` : ''}
               </div>
@@ -148,7 +179,7 @@ export async function sendNewOrderNotification(order) {
             <div class="section">
               <div class="section-title">🎯 Activités recherchées</div>
               <div class="activities">
-                ${order.activities.map(activity => `<span class="activity-tag">${activity}</span>`).join('')}
+                ${order.activities.map(activity => `<span class="activity-tag">${escapeHtml(activity)}</span>`).join('')}
               </div>
             </div>
             ` : ''}
@@ -156,21 +187,21 @@ export async function sendNewOrderNotification(order) {
             ${order.travel_style ? `
             <div class="section">
               <div class="section-title">✨ Style de voyage</div>
-              <p style="color: #555; line-height: 1.6;">${order.travel_style}</p>
+              <p style="color: #555; line-height: 1.6;">${escapeHtml(order.travel_style)}</p>
             </div>
             ` : ''}
 
             ${order.feelings ? `
             <div class="section">
               <div class="section-title">💫 Envies</div>
-              <p style="color: #555; line-height: 1.6;">${order.feelings}</p>
+              <p style="color: #555; line-height: 1.6;">${escapeHtml(order.feelings)}</p>
             </div>
             ` : ''}
 
             ${order.message ? `
             <div class="message-box">
               <div class="section-title">💬 Message du client</div>
-              <p style="color: #555; line-height: 1.6; font-style: italic;">"${order.message}"</p>
+              <p style="color: #555; line-height: 1.6; font-style: italic;">"${escapeHtml(order.message)}"</p>
             </div>
             ` : ''}
 
@@ -194,13 +225,22 @@ export async function sendNewOrderNotification(order) {
         </div>
       </body>
       </html>
-    `,
+    `
+
+    const mailOptions = {
+      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      subject: `✨ Nouvelle demande de voyage - ${order.name}`,
+      html: htmlContent,
+      text: `Nouvelle demande de voyage de ${order.name}\nDestination: ${order.destination}\nEmail: ${order.email}` // Fallback texte
     }
 
     await transporter.sendMail(mailOptions)
     console.log(`✅ Email notification sent for order ${order._id}`)
   } catch (err) {
     console.error('❌ Failed to send email notification:', err.message)
+    console.error('Stack trace:', err.stack)
+    throw err // Propager l'erreur pour gestion par l'appelant
   }
 }
 
@@ -213,31 +253,12 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
   }
 
   try {
-    const nodemailerModule = await import('nodemailer')
-    const nodemailer = nodemailerModule.default
-
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS,
-      },
-      connectionTimeout: 10000,
-      greetingTimeout: 10000,
-    })
-
-    await transporter.verify()
-    console.log('✅ SMTP connection verified')
+    const { transporter, nodemailer } = await createTransporter()
 
     const apiUrl = process.env.API_URL || 'http://localhost:3001'
     const pdfDownloadUrl = pdfPath ? `${apiUrl}${pdfPath}` : null
 
-    const mailOptions = {
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
-      to: order.email,
-      subject: `✈️ Votre projet de voyage Imani - ${order.name}`,
-      contentType: 'text/html; charset=UTF-8',
-      html: `
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
       <head>
@@ -274,11 +295,11 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
         <div class="container">
           <div class="header">
             <h1>✈️ Votre voyage sur mesure</h1>
-            <p>${order.name}, nous avons une réponse pour vous !</p>
+            <p>${escapeHtml(order.name)}, nous avons une réponse pour vous !</p>
           </div>
 
           <div class="content">
-            <p class="greeting">Bonjour <strong>${order.name}</strong>,</p>
+            <p class="greeting">Bonjour <strong>${escapeHtml(order.name)}</strong>,</p>
             <p style="color: #555; line-height: 1.6;">
               ${replyMessage ? `Notre équipe Imani Travel vous a répondu :` : `Notre équipe Imani Travel a préparé votre carnet de voyage personnalisé.`}
             </p>
@@ -286,7 +307,7 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
             ${replyMessage ? `
             <div class="message-box">
               <div class="section-title" style="font-size: 12px; text-transform: uppercase; color: #999; letter-spacing: 1px; margin-bottom: 10px; font-weight: 600;">📨 Message de votre conseiller</div>
-              <p>${replyMessage}</p>
+              <p>${escapeHtml(replyMessage)}</p>
             </div>
             ` : ''}
 
@@ -303,9 +324,9 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
 
             <div class="recap">
               <h3>📋 Récapitulatif de votre demande</h3>
-              <p><strong>Destination :</strong> ${order.destination}</p>
-              <p><strong>Budget :</strong> ${order.budget || 'Non spécifié'}</p>
-              <p><strong>Durée :</strong> ${order.duration || 'Non spécifiée'}</p>
+              <p><strong>Destination :</strong> ${escapeHtml(order.destination)}</p>
+              <p><strong>Budget :</strong> ${escapeHtml(order.budget || 'Non spécifié')}</p>
+              <p><strong>Durée :</strong> ${escapeHtml(order.duration || 'Non spécifiée')}</p>
               ${order.date ? `<p><strong>Période :</strong> ${new Date(order.date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</p>` : ''}
             </div>
 
@@ -325,12 +346,32 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
         </div>
       </body>
       </html>
-      `,
+    `
+
+    const mailOptions = {
+      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+      to: order.email,
+      subject: `✈️ Votre projet de voyage Imani - ${order.name}`,
+      html: htmlContent,
+      text: `Bonjour ${order.name},\n\n${replyMessage || 'Votre carnet de voyage est prêt.'}\n\nTéléchargez-le ici: ${pdfDownloadUrl || 'Consultez votre espace client.'}`
     }
 
     await transporter.sendMail(mailOptions)
     console.log(`✅ Reply email sent to ${order.email} for order ${order._id}`)
   } catch (err) {
     console.error('❌ Failed to send reply email:', err.message)
+    console.error('Stack trace:', err.stack)
+    throw err
   }
+}
+
+// Fonction utilitaire pour échapper les caractères HTML
+function escapeHtml(str) {
+  if (!str) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
