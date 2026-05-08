@@ -1,9 +1,6 @@
 import dns from 'dns'
+import net from 'net'
 
-// Force l'utilisation de l'IPv4 pour toutes les résolutions DNS
-dns.setDefaultResultOrder('ipv4first')
-
-// Configuration SMTP commune avec options de connexion améliorées
 const getTransporterConfig = () => ({
   host: 'smtp.gmail.com',
   port: 587,
@@ -13,19 +10,18 @@ const getTransporterConfig = () => ({
     user: process.env.EMAIL_USER,
     pass: process.env.EMAIL_PASS,
   },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 15000,
-  // Force la résolution IPv4 au niveau de la connexion
+  connectionTimeout: 30000,
+  greetingTimeout: 30000,
+  socketTimeout: 30000,
   tls: {
     rejectUnauthorized: true,
     minVersion: 'TLSv1.2'
   },
-  // Configuration supplémentaire pour forcer IPv4
-  localAddress: undefined, // Laisse Node.js gérer mais avec IPv4 préféré
-  // Méthode de résolution DNS personnalisée pour garantir l'IPv4
   lookup: (hostname, cb) => {
-    dns.lookup(hostname, { family: 4 }, cb)
+    dns.resolve4(hostname, (err, addresses) => {
+      if (err) return cb(err)
+      cb(null, addresses[0], 4)
+    })
   }
 })
 
@@ -36,15 +32,9 @@ async function createTransporter() {
   
   const transporter = nodemailer.createTransport(getTransporterConfig())
   
-  // Vérifier la connexion avec un timeout plus long
   try {
-    await Promise.race([
-      transporter.verify(),
-      new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('SMTP verification timeout after 15s')), 15000)
-      )
-    ])
-    console.log('✅ SMTP connection verified successfully using IPv4')
+    await transporter.verify()
+    console.log('✅ SMTP connection verified')
     return { transporter, nodemailer }
   } catch (err) {
     console.error('❌ SMTP verification failed:', err.message)
