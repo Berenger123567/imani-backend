@@ -1,9 +1,14 @@
 import { Resend } from 'resend'
 
-const resend = new Resend(process.env.RESEND_API_KEY)
-
 const FROM_EMAIL = 'onboarding@resend.dev'
 const FROM_NAME = 'Imani Travel'
+
+function getResend() {
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is missing')
+  }
+  return new Resend(process.env.RESEND_API_KEY)
+}
 
 export async function sendNewOrderNotification(order) {
   console.log('Sending new order notification via Resend...')
@@ -162,7 +167,7 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: process.env.EMAIL_TO || process.env.EMAIL_USER,
       subject: `Nouvelle demande de voyage - ${order.name}`,
@@ -275,7 +280,7 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    const { data, error } = await resend.emails.send({
+    const { data, error } = await getResend().emails.send({
       from: `${FROM_NAME} <${FROM_EMAIL}>`,
       to: order.email,
       subject: `Votre projet de voyage Imani - ${order.name}`,
