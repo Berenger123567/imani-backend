@@ -1,25 +1,20 @@
-import { Resend } from 'resend'
+import sgMail from '@sendgrid/mail'
 
-const FROM_EMAIL = 'onboarding@resend.dev'
+const FROM_EMAIL = 'imanignammankou@gmail.com'
 const FROM_NAME = 'Imani Travel'
 
-let resend = null
-
-function getResend() {
-  if (!resend) {
-    if (!process.env.RESEND_API_KEY) {
-      throw new Error('RESEND_API_KEY is missing')
-    }
-    resend = new Resend(process.env.RESEND_API_KEY)
+function initSendGrid() {
+  if (!process.env.SENDGRID_API_KEY) {
+    throw new Error('SENDGRID_API_KEY is missing')
   }
-  return resend
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
 }
 
 export async function sendNewOrderNotification(order) {
-  console.log('Sending new order notification via Resend...')
+  console.log('Sending new order notification via SendGrid...')
 
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
@@ -172,9 +167,11 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    await getResend().emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: [process.env.EMAIL_TO || process.env.EMAIL_USER],
+    initSendGrid()
+
+    await sgMail.send({
+      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Nouvelle demande de voyage - ${order.name}`,
       html: htmlContent,
     })
@@ -186,10 +183,10 @@ export async function sendNewOrderNotification(order) {
 }
 
 export async function sendReplyToClient(order, replyMessage, pdfPath) {
-  console.log('Sending reply email via Resend...')
+  console.log('Sending reply email via SendGrid...')
 
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('RESEND_API_KEY not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
@@ -280,9 +277,11 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    await getResend().emails.send({
-      from: `${FROM_NAME} <${FROM_EMAIL}>`,
-      to: [order.email],
+    initSendGrid()
+
+    await sgMail.send({
+      to: order.email,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Votre projet de voyage Imani - ${order.name}`,
       html: htmlContent,
     })
