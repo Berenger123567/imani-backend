@@ -18,10 +18,14 @@ const PORT = process.env.PORT || 3000
 
 app.set('trust proxy', 1)
 
-connectDB()
+const allowedOrigins = [
+  process.env.CLIENT_URL,
+  'http://localhost:5173',
+  'http://localhost:3000',
+].filter(Boolean)
 
 app.use(cors({
-  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  origin: allowedOrigins,
   credentials: true,
 }))
 app.use(helmet())
@@ -46,15 +50,15 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const sgMail = (await import('@sendgrid/mail')).default
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY)
-    await sgMail.send({
+    const { Resend } = await import('resend')
+    const resend = new Resend(process.env.RESEND_API_KEY)
+    await resend.emails.send({
+      from: 'Imani Travel <onboarding@resend.dev>',
       to: process.env.EMAIL_USER,
-      from: { email: 'imanignammankou@gmail.com', name: 'Imani Travel' },
       subject: 'Test Imani Travel',
       text: 'Email config OK',
     })
-    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.SENDGRID_API_KEY })
+    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.RESEND_API_KEY })
   } catch (err) {
     res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
   }
@@ -65,9 +69,14 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Erreur serveur' })
 })
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`)
-})
+async function start() {
+  await connectDB()
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`)
+  })
+}
+
+start()
 app.get("/", (req, res) => {
   res.send("API is running 🚀");
 });
