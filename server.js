@@ -50,15 +50,18 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const sgMail = (await import('@sendgrid/mail')).default
-    sgMail.setApiKey(process.env.SENDGRID_API_KEY)
-    await sgMail.send({
-      to: process.env.EMAIL_USER,
-      from: { email: 'imanignammankou@gmail.com', name: 'Imani Travel' },
-      subject: 'Test Imani Travel',
-      text: 'Email config OK',
-    })
-    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.SENDGRID_API_KEY })
+    const { MailerSend, EmailParams, Sender, Recipient } = await import('mailersend')
+    const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY })
+    const sentFrom = new Sender(process.env.FROM_EMAIL, 'Imani Travel')
+    const recipients = [new Recipient(process.env.EMAIL_USER)]
+    const emailParams = new EmailParams()
+      .setFrom(sentFrom)
+      .setTo(recipients)
+      .setReplyTo(sentFrom)
+      .setSubject('Test Imani Travel')
+      .setText('Email config OK')
+    await mailerSend.email.send(emailParams)
+    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.MAILERSEND_API_KEY })
   } catch (err) {
     res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
   }

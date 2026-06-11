@@ -1,24 +1,25 @@
-import sgMail from '@sendgrid/mail'
+import { MailerSend, EmailParams, Sender, Recipient } from 'mailersend'
 
-const FROM_EMAIL = 'imanignammankou@gmail.com'
 const FROM_NAME = 'Imani Travel'
 
-function initSendGrid() {
-  if (!process.env.SENDGRID_API_KEY) {
-    throw new Error('SENDGRID_API_KEY is missing')
+function getMailerSend() {
+  if (!process.env.MAILERSEND_API_KEY) {
+    throw new Error('MAILERSEND_API_KEY is missing')
   }
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+  return new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY })
 }
 
 export async function sendNewOrderNotification(order) {
-  console.log('Sending new order notification via SendGrid...')
+  console.log('Sending new order notification via MailerSend...')
 
-  if (!process.env.SENDGRID_API_KEY) {
-    console.warn('SENDGRID_API_KEY not configured, skipping email')
+  if (!process.env.MAILERSEND_API_KEY) {
+    console.warn('MAILERSEND_API_KEY not configured, skipping email')
     return
   }
 
   try {
+    const mailerSend = getMailerSend()
+
     const adminUrl = process.env.CLIENT_URL
       ? `${process.env.CLIENT_URL}/admin/orders/${order._id}`
       : `http://localhost:5173/admin/orders/${order._id}`
@@ -167,15 +168,17 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    initSendGrid()
+    const sentFrom = new Sender(process.env.FROM_EMAIL, FROM_NAME)
+    const recipients = [new Recipient(process.env.EMAIL_TO || process.env.EMAIL_USER)]
 
-    await sgMail.send({
-      to: process.env.EMAIL_TO || process.env.EMAIL_USER,
-      from: { email: FROM_EMAIL, name: FROM_NAME },
-      subject: `Nouvelle demande de voyage - ${order.name}`,
-      html: htmlContent,
-    })
+    const emailParams = new EmailParams()
+      .setFrom(sentFrom)
+      .setTo(recipients)
+      .setReplyTo(sentFrom)
+      .setSubject(`Nouvelle demande de voyage - ${order.name}`)
+      .setHtml(htmlContent)
 
+    await mailerSend.email.send(emailParams)
     console.log(`Email notification sent for order ${order._id}`)
   } catch (err) {
     console.error('Failed to send email notification:', err.message)
@@ -183,14 +186,16 @@ export async function sendNewOrderNotification(order) {
 }
 
 export async function sendReplyToClient(order, replyMessage, pdfPath) {
-  console.log('Sending reply email via SendGrid...')
+  console.log('Sending reply email via MailerSend...')
 
-  if (!process.env.SENDGRID_API_KEY) {
-    console.warn('SENDGRID_API_KEY not configured, skipping email')
+  if (!process.env.MAILERSEND_API_KEY) {
+    console.warn('MAILERSEND_API_KEY not configured, skipping email')
     return
   }
 
   try {
+    const mailerSend = getMailerSend()
+
     const apiUrl = process.env.API_URL || 'http://localhost:3001'
     const pdfDownloadUrl = pdfPath ? `${apiUrl}${pdfPath}` : null
 
@@ -277,15 +282,17 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    initSendGrid()
+    const sentFrom = new Sender(process.env.FROM_EMAIL, FROM_NAME)
+    const recipients = [new Recipient(order.email, order.name)]
 
-    await sgMail.send({
-      to: order.email,
-      from: { email: FROM_EMAIL, name: FROM_NAME },
-      subject: `Votre projet de voyage Imani - ${order.name}`,
-      html: htmlContent,
-    })
+    const emailParams = new EmailParams()
+      .setFrom(sentFrom)
+      .setTo(recipients)
+      .setReplyTo(sentFrom)
+      .setSubject(`Votre projet de voyage Imani - ${order.name}`)
+      .setHtml(htmlContent)
 
+    await mailerSend.email.send(emailParams)
     console.log(`Reply email sent to ${order.email} for order ${order._id}`)
   } catch (err) {
     console.error('Failed to send reply email:', err.message)
