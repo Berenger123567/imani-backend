@@ -50,18 +50,22 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const { MailerSend, EmailParams, Sender, Recipient } = await import('mailersend')
-    const mailerSend = new MailerSend({ apiKey: process.env.MAILERSEND_API_KEY })
-    const sentFrom = new Sender(process.env.FROM_EMAIL, 'Imani Travel')
-    const recipients = [new Recipient(process.env.EMAIL_USER)]
-    const emailParams = new EmailParams()
-      .setFrom(sentFrom)
-      .setTo(recipients)
-      .setReplyTo(sentFrom)
-      .setSubject('Test Imani Travel')
-      .setText('Email config OK')
-    await mailerSend.email.send(emailParams)
-    res.json({ status: 'ok', email: 'connected', apiKey: !!process.env.MAILERSEND_API_KEY })
+    const nodemailer = (await import('nodemailer')).default
+    const dns = (await import('dns')).default
+    const transporter = nodemailer.createTransport({
+      host: 'smtp.gmail.com', port: 587, secure: false, requireTLS: true,
+      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
+      connectionTimeout: 20000, greetingTimeout: 20000, socketTimeout: 20000,
+      tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
+      lookup: (hostname, options, cb) => dns.lookup(hostname, { family: 4 }, cb),
+    })
+    await transporter.sendMail({
+      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+      to: process.env.EMAIL_USER,
+      subject: 'Test Imani Travel',
+      text: 'Email config OK',
+    })
+    res.json({ status: 'ok', email: 'connected', credentials: !!process.env.EMAIL_USER && !!process.env.EMAIL_PASS })
   } catch (err) {
     res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
   }
