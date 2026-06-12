@@ -1,32 +1,24 @@
-import dns from 'dns'
-import nodemailer from 'nodemailer'
+import sgMail from '@sendgrid/mail'
 
-dns.setDefaultResultOrder('ipv4first')
+const FROM_EMAIL = 'gbayeberenger@gmail.com'
+const FROM_NAME = 'Imani Travel'
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.gmail.com',
-  port: 465,
-  secure: true,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  connectionTimeout: 20000,
-  greetingTimeout: 20000,
-  socketTimeout: 20000,
-  tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
-  lookup: (hostname, options, cb) => {
-    dns.lookup(hostname, { family: 4 }, cb)
-  },
-})
+function initSendGrid() {
+  if (!process.env.SENDGRID_API_KEY) {
+    throw new Error('SENDGRID_API_KEY is missing')
+  }
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+}
 
 export async function sendNewOrderNotification(order) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('Email credentials not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
   try {
+    initSendGrid()
+
     const adminUrl = process.env.CLIENT_URL
       ? `${process.env.CLIENT_URL}/admin/orders/${order._id}`
       : `http://localhost:5173/admin/orders/${order._id}`
@@ -175,26 +167,28 @@ export async function sendNewOrderNotification(order) {
       </html>
     `
 
-    await transporter.sendMail({
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+    await sgMail.send({
       to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Nouvelle demande de voyage - ${order.name}`,
       html: htmlContent,
     })
 
     console.log(`Email notification sent for order ${order._id}`)
   } catch (err) {
-    console.error('Failed to send email notification:', err.message)
+    console.error('Failed to send email notification:', err.message, err.response?.body ? JSON.stringify(err.response.body) : '')
   }
 }
 
 export async function sendReplyToClient(order, replyMessage, pdfPath) {
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
-    console.warn('Email credentials not configured, skipping email')
+  if (!process.env.SENDGRID_API_KEY) {
+    console.warn('SENDGRID_API_KEY not configured, skipping email')
     return
   }
 
   try {
+    initSendGrid()
+
     const apiUrl = process.env.API_URL || 'http://localhost:3001'
     const pdfDownloadUrl = pdfPath ? `${apiUrl}${pdfPath}` : null
 
@@ -281,16 +275,16 @@ export async function sendReplyToClient(order, replyMessage, pdfPath) {
       </html>
     `
 
-    await transporter.sendMail({
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
+    await sgMail.send({
       to: order.email,
+      from: { email: FROM_EMAIL, name: FROM_NAME },
       subject: `Votre projet de voyage Imani - ${order.name}`,
       html: htmlContent,
     })
 
     console.log(`Reply email sent to ${order.email} for order ${order._id}`)
   } catch (err) {
-    console.error('Failed to send reply email:', err.message)
+    console.error('Failed to send reply email:', err.message, err.response?.body ? JSON.stringify(err.response.body) : '')
   }
 }
 

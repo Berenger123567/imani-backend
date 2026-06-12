@@ -50,24 +50,19 @@ app.get('/api/health', (req, res) => {
 
 app.get('/api/health/email', async (req, res) => {
   try {
-    const nodemailer = (await import('nodemailer')).default
-    const dns = (await import('dns')).default
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com', port: 465, secure: true,
-      auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
-      connectionTimeout: 20000, greetingTimeout: 20000, socketTimeout: 20000,
-      tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' },
-      lookup: (hostname, options, cb) => dns.lookup(hostname, { family: 4 }, cb),
-    })
-    await transporter.sendMail({
-      from: `"Imani Travel" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER,
-      subject: 'Test Imani Travel',
-      text: 'Email config OK',
-    })
-    res.json({ status: 'ok', email: 'connected', credentials: !!process.env.EMAIL_USER && !!process.env.EMAIL_PASS })
+    const sgMail = (await import('@sendgrid/mail')).default
+    if (process.env.SENDGRID_API_KEY) {
+      sgMail.setApiKey(process.env.SENDGRID_API_KEY)
+      res.json({
+        status: 'ok', email: 'configured',
+        sendgrid: !!process.env.SENDGRID_API_KEY,
+        to: process.env.EMAIL_TO || process.env.EMAIL_USER,
+      })
+    } else {
+      res.status(503).json({ status: 'error', email: 'not_configured', message: 'SENDGRID_API_KEY missing' })
+    }
   } catch (err) {
-    res.status(503).json({ status: 'error', email: 'disconnected', message: err.message })
+    res.status(503).json({ status: 'error', email: 'error', message: err.message })
   }
 })
 
