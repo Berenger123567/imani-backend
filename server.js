@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { connectDB } from './config/db.js'
+import User from './models/User.js'
 import authRoutes from './routes/authRoutes.js'
 import orderRoutes from './routes/orderRoutes.js'
 import statsRoutes from './routes/statsRoutes.js'
@@ -71,8 +72,25 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Erreur serveur' })
 })
 
+async function createDefaultAdmin() {
+  try {
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@imani.com'
+    const adminPassword = process.env.ADMIN_PASSWORD || 'admin123'
+    const existing = await User.findOne({ email: adminEmail.toLowerCase() })
+    if (!existing) {
+      await User.create({ email: adminEmail, password: adminPassword })
+      console.log('Admin user created')
+    } else {
+      console.log('Admin user already exists')
+    }
+  } catch (err) {
+    console.error('Failed to create admin user:', err.message)
+  }
+}
+
 async function start() {
   await connectDB()
+  await createDefaultAdmin()
   app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`)
   })

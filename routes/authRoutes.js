@@ -1,45 +1,31 @@
 import { Router } from 'express'
-import bcrypt from 'bcrypt'
 import jwt from 'jsonwebtoken'
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import User from '../models/User.js'
 import { authMiddleware } from '../middleware/authMiddleware.js'
 
 const router = Router()
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-let hashedPassword = null
-let adminEmail = process.env.ADMIN_EMAIL || 'admin@imani.com'
-
-async function getHashedPassword() {
-  if (!hashedPassword) {
-    hashedPassword = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10)
-  }
-  return hashedPassword
-}
 
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body
 
-    const validEmail = email === adminEmail
-    const storedHash = await getHashedPassword()
-    const validPassword = await bcrypt.compare(password, storedHash)
+    const user = await User.findOne({ email: email.toLowerCase() })
+    if (!user) {
+      return res.status(401).json({ error: 'Email ou mot de passe incorrect' })
+    }
 
-    if (!validEmail || !validPassword) {
+    const validPassword = await user.comparePassword(password)
+    if (!validPassword) {
       return res.status(401).json({ error: 'Email ou mot de passe incorrect' })
     }
 
     const token = jwt.sign(
-      { id: 'admin', email: adminEmail },
+      { id: user._id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     )
 
-    res.json({ token, email: adminEmail })
+    res.json({ token, email: user.email })
   } catch (err) {
     res.status(500).json({ error: 'Erreur serveur' })
   }
@@ -53,8 +39,12 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body
 
-    const storedHash = await getHashedPassword()
-    const validPassword = await bcrypt.compare(currentPassword, storedHash)
+    const user = await User.findById(req.admin.id)
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' })
+    }
+
+    const validPassword = await user.comparePassword(currentPassword)
     if (!validPassword) {
       return res.status(400).json({ error: 'Mot de passe actuel incorrect' })
     }
@@ -63,20 +53,8 @@ router.post('/change-password', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Le nouveau mot de passe doit contenir au moins 6 caractères' })
     }
 
-    hashedPassword = await bcrypt.hash(newPassword, 10)
-
-    const envPath = path.resolve(__dirname, '../.env')
-    try {
-      let envContent = fs.readFileSync(envPath, 'utf8')
-      envContent = envContent.replace(
-        /ADMIN_PASSWORD=.*/,
-        `ADMIN_PASSWORD=${newPassword}`
-      )
-      fs.writeFileSync(envPath, envContent, 'utf8')
-      console.log('✅ Mot de passe mis à jour dans .env')
-    } catch {
-      console.warn('⚠️ Impossible de mettre à jour le fichier .env')
-    }
+    user.password = newPassword
+    await user.save()
 
     res.json({ success: true, message: 'Mot de passe modifié avec succès' })
   } catch (err) {
@@ -92,24 +70,19 @@ router.post('/update-email', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Email invalide' })
     }
 
-    adminEmail = email
-
-    const envPath = path.resolve(__dirname, '../.env')
-    try {
-      let envContent = fs.readFileSync(envPath, 'utf8')
-      if (envContent.includes('ADMIN_EMAIL=')) {
-        envContent = envContent.replace(/ADMIN_EMAIL=.*/, `ADMIN_EMAIL=${email}`)
-      } else {
-        envContent += `\nADMIN_EMAIL=${email}`
-      }
-      fs.writeFileSync(envPath, envContent, 'utf8')
-      console.log('✅ Email mis à jour dans .env')
-    } catch {
-      console.warn('⚠️ Impossible de mettre à jour le fichier .env')
+    const user = await User.findById(req.admin.id)
+    if (!user) {
+      return res.status(404).json({ error: 'Utilisateur introuvable' })
     }
+
+    user.email = email
+    await user.save()
 
     res.json({ success: true, message: 'Email modifié avec succès', email })
   } catch (err) {
+    if (err.code === 11000) {
+      return res.status(400).json({ error: 'Cet email est déjà utilisé' })
+    }
     res.status(500).json({ error: err.message })
   }
 })
