@@ -39,7 +39,7 @@ router.post('/change-password', authMiddleware, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body
 
-    const user = await User.findById(req.admin.id)
+    const user = await User.findOne({ email: req.admin.email })
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur introuvable' })
     }
@@ -70,7 +70,7 @@ router.post('/update-email', authMiddleware, async (req, res) => {
       return res.status(400).json({ error: 'Email invalide' })
     }
 
-    const user = await User.findById(req.admin.id)
+    const user = await User.findOne({ email: req.admin.email })
     if (!user) {
       return res.status(404).json({ error: 'Utilisateur introuvable' })
     }
